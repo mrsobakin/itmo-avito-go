@@ -19,7 +19,8 @@ import (
 	"github.com/mrsobakin/itmo-avito-go/internal/database"
 	"github.com/mrsobakin/itmo-avito-go/internal/httpapi"
 	"github.com/mrsobakin/itmo-avito-go/internal/transaction"
-	"github.com/mrsobakin/itmo-avito-go/internal/trip"
+	"github.com/mrsobakin/itmo-avito-go/internal/trip/repository"
+	"github.com/mrsobakin/itmo-avito-go/internal/trip/service"
 )
 
 const maxRequestBody = 1 << 20
@@ -49,10 +50,10 @@ func run() error {
 	}
 	defer pool.Close()
 
-	repository := trip.NewRepository(pool, cfg.Database.QueryTimeout)
+	tripRepository := repository.New(pool, cfg.Database.QueryTimeout)
 	txManager := transaction.NewManager(pool, cfg.Database.QueryTimeout)
-	service := trip.NewService(repository, txManager, cfg.IdempotencyKeyTTL)
-	handler := httpapi.NewHandler(service, pool, cfg.Database.QueryTimeout, logger)
+	tripService := service.New(tripRepository, txManager, cfg.IdempotencyKeyTTL)
+	handler := httpapi.NewHandler(tripService, pool, cfg.Database.QueryTimeout, logger)
 
 	spec, err := api.GetSpec()
 	if err != nil {

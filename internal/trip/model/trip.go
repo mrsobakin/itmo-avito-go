@@ -1,18 +1,9 @@
-package trip
+package model
 
 import (
-	"errors"
 	"time"
 
 	"github.com/google/uuid"
-)
-
-var (
-	ErrNotFound   = errors.New("trip not found")
-	ErrCompleted  = errors.New("trip already completed")
-	ErrDriverBusy = errors.New("driver already has an active trip")
-
-	ErrIdempotencyConflict = errors.New("idempotency key was used with a different request")
 )
 
 type Status string
