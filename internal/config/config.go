@@ -15,6 +15,7 @@ type Config struct {
 	LogLevel          slog.Level
 	ShutdownTimeout   time.Duration
 	IdempotencyKeyTTL time.Duration
+	ServiceName       string
 }
 
 type HTTP struct {
@@ -55,13 +56,19 @@ func Load() (Config, error) {
 		LogLevel:          l.logLevel("LOG_LEVEL"),
 		ShutdownTimeout:   l.duration("SHUTDOWN_TIMEOUT"),
 		IdempotencyKeyTTL: l.duration("IDEMPOTENCY_KEY_TTL"),
+		ServiceName:       l.string("OTEL_SERVICE_NAME"),
 	}
+
+	l.string("OTEL_EXPORTER_OTLP_ENDPOINT")
+
 	if l.err != nil {
 		return Config{}, l.err
 	}
+
 	if cfg.Database.MinConns > cfg.Database.MaxConns {
 		return Config{}, errors.New("DATABASE_MIN_CONNS must not exceed DATABASE_MAX_CONNS")
 	}
+
 	return cfg, nil
 }
 
@@ -78,6 +85,7 @@ func (l *loader) string(name string) string {
 	if value == "" {
 		l.fail("%s is required", name)
 	}
+
 	return value
 }
 
@@ -86,10 +94,12 @@ func (l *loader) duration(name string) time.Duration {
 	if value == "" {
 		return 0
 	}
+
 	parsed, err := time.ParseDuration(value)
 	if err != nil || parsed <= 0 {
 		l.fail("%s must be a positive duration", name)
 	}
+
 	return parsed
 }
 
@@ -98,10 +108,12 @@ func (l *loader) int32(name string) int32 {
 	if value == "" {
 		return 0
 	}
+
 	parsed, err := strconv.ParseInt(value, 10, 32)
 	if err != nil || parsed < 0 {
 		l.fail("%s must be a non-negative integer", name)
 	}
+
 	return int32(parsed)
 }
 
@@ -110,9 +122,11 @@ func (l *loader) logLevel(name string) slog.Level {
 	if value == "" {
 		return 0
 	}
+
 	var level slog.Level
 	if err := level.UnmarshalText([]byte(value)); err != nil {
 		l.fail("%s: %w", name, err)
 	}
+
 	return level
 }
