@@ -1,6 +1,6 @@
 schema_version = 1
-lab = 1
-components = ["postgres"]
+lab = 2
+components = ["postgres", "observability"]
 
 [env]
 HTTP_IDLE_TIMEOUT = "60s"
