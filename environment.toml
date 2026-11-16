@@ -1,6 +1,6 @@
 schema_version = 1
-lab = 2
-components = ["postgres", "observability"]
+lab = 3
+components = ["postgres", "observability", "push"]
 
 [env]
 HTTP_IDLE_TIMEOUT = "60s"
@@ -8,3 +8,4 @@ HTTP_READ_HEADER_TIMEOUT = "2s"
 HTTP_READ_TIMEOUT = "5s"
 HTTP_WRITE_TIMEOUT = "10s"
 IDEMPOTENCY_KEY_TTL = "24h"
+POSITION_SCAN_BATCH_SIZE = "100"

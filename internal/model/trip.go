@@ -1,6 +1,8 @@
 package model
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 
 	"github.com/mrsobakin/itmo-avito-go/internal/domain/trip"
@@ -26,4 +28,16 @@ type StatusChange struct {
 type IdempotencyRecord struct {
 	RequestHash string
 	TripID      uuid.UUID
+}
+
+type StaleTrip struct {
+	ID          uuid.UUID
+	DriverID    uuid.UUID
+	SilentSince time.Time
+}
+
+type SavePositionInput struct {
+	TripID      uuid.UUID
+	Coordinates trip.Coordinates
+	RecordedAt  time.Time
 }

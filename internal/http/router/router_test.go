@@ -24,6 +24,8 @@ import (
 	"github.com/mrsobakin/itmo-avito-go/api"
 	"github.com/mrsobakin/itmo-avito-go/internal/domain/trip"
 	"github.com/mrsobakin/itmo-avito-go/internal/http/health"
+	positionlist "github.com/mrsobakin/itmo-avito-go/internal/http/position/list"
+	positionsave "github.com/mrsobakin/itmo-avito-go/internal/http/position/save"
 	"github.com/mrsobakin/itmo-avito-go/internal/http/router"
 	"github.com/mrsobakin/itmo-avito-go/internal/http/trip/create"
 	"github.com/mrsobakin/itmo-avito-go/internal/http/trip/finish"
@@ -45,6 +47,14 @@ func (f fakeTrips) Get(_ context.Context, id uuid.UUID) (trip.Trip, error) { ret
 
 func (f fakeTrips) Finish(_ context.Context, id uuid.UUID) (trip.Trip, error) { return f.finish(id) }
 
+func (f fakeTrips) Save(_ context.Context, input model.SavePositionInput) (trip.Position, error) {
+	return trip.Position{ID: 1, TripID: input.TripID, Coordinates: input.Coordinates, RecordedAt: input.RecordedAt}, nil
+}
+
+func (f fakeTrips) List(context.Context, uuid.UUID) ([]trip.Position, error) {
+	return []trip.Position{}, nil
+}
+
 type fakePinger struct{}
 
 func (fakePinger) Ping(context.Context) error { return nil }
@@ -64,10 +74,12 @@ func newEnv(t *testing.T, trips fakeTrips) env {
 	meterProvider := sdkmetric.NewMeterProvider(sdkmetric.WithReader(e.metrics))
 
 	handler, err := router.New(router.Handlers{
-		Create: create.New(trips),
-		Get:    get.New(trips),
-		Finish: finish.New(trips),
-		Health: health.New(fakePinger{}, time.Second),
+		Create:        create.New(trips),
+		Get:           get.New(trips),
+		Finish:        finish.New(trips),
+		SavePosition:  positionsave.New(trips),
+		ListPositions: positionlist.New(trips),
+		Health:        health.New(fakePinger{}, time.Second),
 	}, router.Telemetry{
 		Logger:         telemetry.NewLogger(e.logs, slog.LevelInfo, "trip-service"),
 		TracerProvider: tracerProvider,
@@ -228,4 +240,38 @@ func TestMetricsUseRouteTemplate(t *testing.T) {
 	require.True(t, ok)
 	require.Len(t, active.DataPoints, 1)
 	assert.Equal(t, int64(0), active.DataPoints[0].Value)
+}
+
+func TestPositionRoutes(t *testing.T) {
+	path := "/api/v1/trips/" + uuid.NewString() + "/positions"
+	valid := `{"coordinates": {"latitude": 59.935, "longitude": 30.335}, "recorded_at": "2026-08-24T12:00:05Z"}`
+
+	tests := []struct {
+		name       string
+		method     string
+		body       string
+		wantStatus int
+	}{
+		{name: "save", method: http.MethodPost, body: valid, wantStatus: http.StatusCreated},
+		{name: "list", method: http.MethodGet, wantStatus: http.StatusOK},
+		{
+			name: "unparseable recorded_at", method: http.MethodPost, wantStatus: http.StatusBadRequest,
+			body: `{"coordinates": {"latitude": 59.935, "longitude": 30.335}, "recorded_at": "yesterday"}`,
+		},
+		{
+			name: "latitude out of range", method: http.MethodPost, wantStatus: http.StatusBadRequest,
+			body: `{"coordinates": {"latitude": 95, "longitude": 30.335}, "recorded_at": "2026-08-24T12:00:05Z"}`,
+		},
+		{name: "missing recorded_at", method: http.MethodPost, body: `{"coordinates": {"latitude": 1, "longitude": 2}}`, wantStatus: http.StatusBadRequest},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := newEnv(t, fakeTrips{})
+
+			w := e.do(tt.method, path, tt.body)
+
+			assert.Equal(t, tt.wantStatus, w.Code)
+		})
+	}
 }

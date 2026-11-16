@@ -5,7 +5,7 @@ import "github.com/mrsobakin/itmo-avito-go/internal/domain/trip"
 var tripColumns = []string{
 	"id", "user_id", "driver_id",
 	"start_latitude", "start_longitude", "end_latitude", "end_longitude",
-	"price", "status", "started_at", "finished_at",
+	"price", "status", "started_at", "finished_at", "last_position_at",
 }
 
 func tripValues(value trip.Trip) []any {
@@ -13,7 +13,7 @@ func tripValues(value trip.Trip) []any {
 		value.ID, value.UserID, value.DriverID,
 		value.StartPoint.Latitude, value.StartPoint.Longitude,
 		value.EndPoint.Latitude, value.EndPoint.Longitude,
-		value.Price, value.Status, value.StartedAt, value.FinishedAt,
+		value.Price, value.Status, value.StartedAt, value.FinishedAt, value.LastPositionAt,
 	}
 }
 
@@ -22,7 +22,7 @@ func tripDestinations(value *trip.Trip) []any {
 		&value.ID, &value.UserID, &value.DriverID,
 		&value.StartPoint.Latitude, &value.StartPoint.Longitude,
 		&value.EndPoint.Latitude, &value.EndPoint.Longitude,
-		&value.Price, &value.Status, &value.StartedAt, &value.FinishedAt,
+		&value.Price, &value.Status, &value.StartedAt, &value.FinishedAt, &value.LastPositionAt,
 	}
 }
 
@@ -31,6 +31,10 @@ func normalize(value trip.Trip) trip.Trip {
 
 	if value.FinishedAt != nil {
 		value.FinishedAt = new(value.FinishedAt.UTC())
+	}
+
+	if value.LastPositionAt != nil {
+		value.LastPositionAt = new(value.LastPositionAt.UTC())
 	}
 
 	return value

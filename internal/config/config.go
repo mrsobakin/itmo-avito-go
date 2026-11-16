@@ -16,6 +16,21 @@ type Config struct {
 	ShutdownTimeout   time.Duration
 	IdempotencyKeyTTL time.Duration
 	ServiceName       string
+	Positions         Positions
+	Push              Push
+}
+
+type Positions struct {
+	CheckInterval time.Duration
+	StaleAfter    time.Duration
+	Workers       int
+	QueueSize     int
+	ScanBatchSize uint64
+}
+
+type Push struct {
+	URL            string
+	RequestTimeout time.Duration
 }
 
 type HTTP struct {
@@ -57,6 +72,17 @@ func Load() (Config, error) {
 		ShutdownTimeout:   l.duration("SHUTDOWN_TIMEOUT"),
 		IdempotencyKeyTTL: l.duration("IDEMPOTENCY_KEY_TTL"),
 		ServiceName:       l.string("OTEL_SERVICE_NAME"),
+		Positions: Positions{
+			CheckInterval: l.duration("POSITION_CHECK_INTERVAL"),
+			StaleAfter:    l.duration("POSITION_STALE_AFTER"),
+			Workers:       l.positiveInt("POSITION_WORKERS"),
+			QueueSize:     l.positiveInt("POSITION_QUEUE_SIZE"),
+			ScanBatchSize: l.positiveUint("POSITION_SCAN_BATCH_SIZE"),
+		},
+		Push: Push{
+			URL:            l.string("PUSH_HTTP_URL"),
+			RequestTimeout: l.duration("PUSH_REQUEST_TIMEOUT"),
+		},
 	}
 
 	l.string("OTEL_EXPORTER_OTLP_ENDPOINT")
@@ -115,6 +141,34 @@ func (l *loader) int32(name string) int32 {
 	}
 
 	return int32(parsed)
+}
+
+func (l *loader) positiveInt(name string) int {
+	value := l.string(name)
+	if value == "" {
+		return 0
+	}
+
+	parsed, err := strconv.ParseInt(value, 10, 32)
+	if err != nil || parsed <= 0 {
+		l.fail("%s must be a positive integer", name)
+	}
+
+	return int(parsed)
+}
+
+func (l *loader) positiveUint(name string) uint64 {
+	value := l.string(name)
+	if value == "" {
+		return 0
+	}
+
+	parsed, err := strconv.ParseUint(value, 10, 32)
+	if err != nil || parsed == 0 {
+		l.fail("%s must be a positive integer", name)
+	}
+
+	return parsed
 }
 
 func (l *loader) logLevel(name string) slog.Level {
