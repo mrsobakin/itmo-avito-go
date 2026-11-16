@@ -61,8 +61,8 @@ type Counter struct {
 	counter metric.Int64Counter
 }
 
-func NewCounter(meter metric.Meter, name, description string) (*Counter, error) {
-	counter, err := meter.Int64Counter(name, metric.WithUnit("{trip}"), metric.WithDescription(description))
+func NewCounter(meter metric.Meter, name, unit, description string) (*Counter, error) {
+	counter, err := meter.Int64Counter(name, metric.WithUnit(unit), metric.WithDescription(description))
 	if err != nil {
 		return nil, fmt.Errorf("create counter %s: %w", name, err)
 	}

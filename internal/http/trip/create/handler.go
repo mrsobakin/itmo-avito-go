@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/mrsobakin/itmo-avito-go/api"
+	"github.com/mrsobakin/itmo-avito-go/internal/http/request"
 	"github.com/mrsobakin/itmo-avito-go/internal/http/response"
 )
 
@@ -17,7 +18,7 @@ func New(usecase usecase) *Handler {
 
 func (h *Handler) Handle(w http.ResponseWriter, r *http.Request, params api.CreateTripParams) {
 	var body api.TripData
-	if err := decodeJSON(r.Body, &body); err != nil {
+	if err := request.DecodeJSON(r.Body, &body); err != nil {
 		response.InvalidRequest(w, r, "Invalid JSON body: "+err.Error())
 		return
 	}

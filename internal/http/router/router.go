@@ -16,6 +16,8 @@ import (
 	"github.com/mrsobakin/itmo-avito-go/internal/http/domainerror"
 	"github.com/mrsobakin/itmo-avito-go/internal/http/health"
 	"github.com/mrsobakin/itmo-avito-go/internal/http/middleware"
+	positionlist "github.com/mrsobakin/itmo-avito-go/internal/http/position/list"
+	positionsave "github.com/mrsobakin/itmo-avito-go/internal/http/position/save"
 	"github.com/mrsobakin/itmo-avito-go/internal/http/response"
 	"github.com/mrsobakin/itmo-avito-go/internal/http/trip/create"
 	"github.com/mrsobakin/itmo-avito-go/internal/http/trip/finish"
@@ -25,10 +27,12 @@ import (
 const maxRequestBody = 1 << 20
 
 type Handlers struct {
-	Create *create.Handler
-	Get    *get.Handler
-	Finish *finish.Handler
-	Health *health.Handler
+	Create        *create.Handler
+	Get           *get.Handler
+	Finish        *finish.Handler
+	SavePosition  *positionsave.Handler
+	ListPositions *positionlist.Handler
+	Health        *health.Handler
 }
 
 type Telemetry struct {
@@ -110,6 +114,14 @@ func (s server) GetTrip(w http.ResponseWriter, r *http.Request, tripID api.TripI
 
 func (s server) FinishTrip(w http.ResponseWriter, r *http.Request, tripID api.TripId) {
 	s.h.Finish.Handle(w, r, tripID)
+}
+
+func (s server) CreateTripPosition(w http.ResponseWriter, r *http.Request, tripID api.TripId) {
+	s.h.SavePosition.Handle(w, r, tripID)
+}
+
+func (s server) ListTripPositions(w http.ResponseWriter, r *http.Request, tripID api.TripId) {
+	s.h.ListPositions.Handle(w, r, tripID)
 }
 
 func (s server) Health(w http.ResponseWriter, r *http.Request) {

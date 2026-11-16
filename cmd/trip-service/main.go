@@ -36,6 +36,8 @@ func run() error {
 
 	logger := c.Logger
 
+	c.Positions.Start(context.WithoutCancel(appCtx))
+
 	serverErrors := make(chan error, 1)
 	go func() {
 		logger.Info("HTTP server started", "address", cfg.HTTP.Addr)
@@ -61,6 +63,11 @@ func run() error {
 		err = errors.Join(err, shutdownErr, c.Server.Close())
 	} else if err == nil {
 		err = <-serverErrors
+	}
+
+	if stopErr := c.Positions.Stop(shutdownCtx); stopErr != nil {
+		logger.Error("position poller did not drain in time, forcing exit", "error", stopErr)
+		err = errors.Join(err, stopErr)
 	}
 
 	err = errors.Join(err, c.Close(shutdownCtx))

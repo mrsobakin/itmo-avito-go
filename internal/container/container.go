@@ -12,7 +12,10 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/mrsobakin/itmo-avito-go/internal/config"
+	"github.com/mrsobakin/itmo-avito-go/internal/gateway/push"
 	"github.com/mrsobakin/itmo-avito-go/internal/http/health"
+	positionlisthttp "github.com/mrsobakin/itmo-avito-go/internal/http/position/list"
+	positionsavehttp "github.com/mrsobakin/itmo-avito-go/internal/http/position/save"
 	"github.com/mrsobakin/itmo-avito-go/internal/http/router"
 	createhttp "github.com/mrsobakin/itmo-avito-go/internal/http/trip/create"
 	finishhttp "github.com/mrsobakin/itmo-avito-go/internal/http/trip/finish"
@@ -21,18 +24,24 @@ import (
 	"github.com/mrsobakin/itmo-avito-go/internal/infra/postgres/transaction"
 	"github.com/mrsobakin/itmo-avito-go/internal/infra/telemetry"
 	idempotencyrepo "github.com/mrsobakin/itmo-avito-go/internal/repository/idempotency"
+	positionrepo "github.com/mrsobakin/itmo-avito-go/internal/repository/position"
 	triprepo "github.com/mrsobakin/itmo-avito-go/internal/repository/trip"
+	positionlist "github.com/mrsobakin/itmo-avito-go/internal/usecase/position/list"
+	positionsave "github.com/mrsobakin/itmo-avito-go/internal/usecase/position/save"
 	"github.com/mrsobakin/itmo-avito-go/internal/usecase/trip/create"
 	"github.com/mrsobakin/itmo-avito-go/internal/usecase/trip/finish"
 	"github.com/mrsobakin/itmo-avito-go/internal/usecase/trip/get"
+	"github.com/mrsobakin/itmo-avito-go/internal/worker/positions"
 )
 
-const meterName = "github.com/mrsobakin/itmo-avito-go"
+const instrumentationName = "github.com/mrsobakin/itmo-avito-go"
 
 type Container struct {
 	Logger    *slog.Logger
 	Server    *http.Server
+	Positions *positions.Service
 	pool      *pgxpool.Pool
+	push      *push.Client
 	telemetry *telemetry.Telemetry
 }
 
@@ -49,19 +58,24 @@ func New(ctx context.Context, cfg config.Config) (_ *Container, err error) {
 		return nil, err
 	}
 
-	meter := c.telemetry.MeterProvider.Meter(meterName)
+	meter := c.telemetry.MeterProvider.Meter(instrumentationName)
 
 	c.pool, err = postgres.Open(ctx, cfg.Database, c.telemetry.TracerProvider, c.telemetry.MeterProvider)
 	if err != nil {
 		return nil, err
 	}
 
-	tripsCreated, err := telemetry.NewCounter(meter, "tripgo.trips.created", "Number of created trips.")
+	tripsCreated, err := telemetry.NewCounter(meter, "tripgo.trips.created", "{trip}", "Number of created trips.")
 	if err != nil {
 		return nil, err
 	}
 
-	tripsCompleted, err := telemetry.NewCounter(meter, "tripgo.trips.completed", "Number of completed trips.")
+	tripsCompleted, err := telemetry.NewCounter(meter, "tripgo.trips.completed", "{trip}", "Number of completed trips.")
+	if err != nil {
+		return nil, err
+	}
+
+	positionsSaved, err := telemetry.NewCounter(meter, "tripgo.positions.saved", "{position}", "Number of saved positions.")
 	if err != nil {
 		return nil, err
 	}
@@ -70,12 +84,38 @@ func New(ctx context.Context, cfg config.Config) (_ *Container, err error) {
 	txManager := transaction.NewManager(c.pool, cfg.Database.QueryTimeout)
 	trips := triprepo.New(db)
 	keys := idempotencyrepo.New(db)
+	tripPositions := positionrepo.New(db)
+
+	c.push = push.New(cfg.Push.URL, cfg.Push.RequestTimeout, c.telemetry.TracerProvider)
+
+	c.Positions, err = positions.New(positions.Options{
+		CheckInterval:  cfg.Positions.CheckInterval,
+		StaleAfter:     cfg.Positions.StaleAfter,
+		Workers:        cfg.Positions.Workers,
+		QueueSize:      cfg.Positions.QueueSize,
+		ScanBatchSize:  cfg.Positions.ScanBatchSize,
+		RequestTimeout: cfg.Push.RequestTimeout,
+	}, positions.Deps{
+		Trips:     trips,
+		Push:      c.push,
+		NewTicker: positions.NewTicker,
+		Meter:     meter,
+		Tracer:    c.telemetry.TracerProvider.Tracer(instrumentationName),
+		Logger:    c.Logger,
+	})
+	if err != nil {
+		return nil, err
+	}
 
 	handler, err := router.New(router.Handlers{
 		Create: createhttp.New(create.New(trips, keys, txManager, tripsCreated, c.Logger, cfg.IdempotencyKeyTTL, now)),
 		Get:    gethttp.New(get.New(trips)),
 		Finish: finishhttp.New(finish.New(trips, txManager, tripsCompleted, c.Logger, now)),
-		Health: health.New(c.pool, cfg.Database.QueryTimeout),
+		SavePosition: positionsavehttp.New(
+			positionsave.New(trips, tripPositions, txManager, positionsSaved, c.Positions, now),
+		),
+		ListPositions: positionlisthttp.New(positionlist.New(trips, tripPositions)),
+		Health:        health.New(c.pool, cfg.Database.QueryTimeout),
 	}, router.Telemetry{
 		Logger:         c.Logger,
 		TracerProvider: c.telemetry.TracerProvider,
@@ -99,6 +139,10 @@ func New(ctx context.Context, cfg config.Config) (_ *Container, err error) {
 }
 
 func (c *Container) Close(ctx context.Context) error {
+	if c.push != nil {
+		c.push.Close()
+	}
+
 	if c.pool != nil {
 		c.pool.Close()
 	}
